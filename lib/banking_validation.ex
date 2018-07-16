@@ -4,10 +4,13 @@ defmodule ExBanking.BankingValidation do
       Registry.lookup(Registry.ExBanking, user)
   end
 
-  def get_balance_from_reply(state, _currency) when state == %{}, do: {:ok, 0}
-
   def get_balance_from_reply(state, currency) do
-    {:ok, Map.get(state, currency)}
+    balance = Map.get(state, currency)
+    if is_number(balance) do
+      {:ok, balance}
+    else
+      {:ok, 0}
+    end
   end
 
   def enough_balance_to_withdraw?(state, currency, amount) do
@@ -16,9 +19,7 @@ defmodule ExBanking.BankingValidation do
     cur_balance != nil && cur_balance >= amount
   end
 
-  def valid_arguments?(user) when is_bitstring(user) do
-    true
-  end
+  def valid_arguments?(user) when is_bitstring(user), do: true
 
   def valid_arguments?(_user), do: false
 

@@ -67,7 +67,7 @@ defmodule ExBankingTest do
         IO.inspect data
         cond do
           n < 6 ->
-            assert (data == {:error, :too_many_requests_to_user} || data == {:error, :too_many_requests_to_sender})
+            assert data == {:error, :too_many_requests_to_user}
             loop2(n + 1)
           true ->
             assert Enum.any?([

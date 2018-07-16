@@ -33,12 +33,14 @@ defmodule ExBanking do
 
   @spec get_balance(user :: String.t, currency :: String.t) :: {:ok, balance :: number} | banking_error
   def get_balance(user, currency) do
-    with [] <- BankingValidation.lookup_user(user) do
-      {:error, :user_does_not_exist}
+    with true <- BankingValidation.valid_arguments?(user, currency),
+    [{user_pid, _state}] <- BankingValidation.lookup_user(user),
+    %{} = new_balance <- GenServer.call(user_pid, {:get_balance}) do
+      BankingValidation.get_balance_from_reply(new_balance, currency)
     else
-      [{user_pid, _state}] ->
-        GenServer.call(user_pid, {:get_balance})
-        |> BankingValidation.get_balance_from_reply(currency)
+      false -> {:error, :wrong_arguments}
+      [] -> {:error, :user_does_not_exist}
+      :too_many_requests_to_user -> {:error, :too_many_requests_to_user}
     end
   end
 
