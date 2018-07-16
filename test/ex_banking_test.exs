@@ -45,4 +45,48 @@ defmodule ExBankingTest do
     assert withdraw("user1", 100.12, "dollar") == {:ok, 0}
     assert get_balance("user1", "dollar") == {:ok, 0}
   end
+
+  test "too many requests test" do
+    create_user("user4")
+    create_user("user5")
+    s = self()
+    Enum.each(1..15, fn n -> spawn(fn ->
+      data =
+        case rem(n, 4) do
+          0  -> send("user4", "user5", n, "RMB")
+          _ -> deposit("user4", n, "RMB")
+         end
+      send s, {self(), data}
+    end) end)
+    loop2(1)
+  end
+
+  def loop2(n) do
+    receive do
+      {_, data} ->
+        IO.inspect data
+        cond do
+          n < 6 ->
+            assert (data == {:error, :too_many_requests_to_user} || data == {:error, :too_many_requests_to_sender})
+            loop2(n + 1)
+          true ->
+            assert Enum.any?([
+              {:ok, 1},
+              {:ok, 3},
+              {:ok, 6},
+              {:ok, 7},
+              {:ok, 2, 4},
+              {:ok, 13},
+              {:ok, 20},
+              {:ok, 21},
+              {:ok, 12, 12},
+              {:ok, 31}
+            ], fn x -> x == data end)
+            loop2(n + 1)
+        end
+      after
+        1000 ->
+          :ok
+    end
+  end
 end
