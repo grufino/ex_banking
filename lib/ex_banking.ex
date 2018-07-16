@@ -1,8 +1,7 @@
 defmodule ExBanking do
   use Application
 
-  alias ExBanking.User
-  alias ExBanking.BankingValidation
+  alias ExBanking.{User, UsersSupervisor, BankingValidation}
 
   @type banking_error :: {:error,
     :wrong_arguments                |
@@ -22,11 +21,13 @@ defmodule ExBanking do
 
   @spec create_user(user :: String.t) :: :ok | banking_error
   def create_user(user) do
-    if BankingValidation.lookup_user(user) != [] do
-      {:error, :user_already_exists}
+    with true <- BankingValidation.valid_arguments?(user),
+      [] <- BankingValidation.lookup_user(user) do
+      UsersSupervisor.start_child(user)
+      :ok
     else
-      {:via, Registry, {Registry.ExBanking, user}}
-      |> User.start_link()
+      false -> {:error, :wrong_arguments}
+      [{_user_pid, _state}] -> {:error, :user_already_exists}
     end
   end
 
@@ -36,55 +37,51 @@ defmodule ExBanking do
       {:error, :user_does_not_exist}
     else
       [{user_pid, _state}] ->
-        GenServer.call(user_pid, {:get_balance, currency})
-        |> fn balance -> {:ok, balance} end.()
+        GenServer.call(user_pid, {:get_balance})
+        |> BankingValidation.get_balance_from_reply(currency)
     end
   end
 
   @spec deposit(user :: String.t, amount :: number, currency :: String.t) :: {:ok, new_balance :: number} | banking_error
   def deposit(user, amount, currency) do
-    with [] <- BankingValidation.lookup_user(user) do
-      {:error, :user_does_not_exist}
+    with true <- BankingValidation.valid_arguments?(user, amount, currency),
+    [{user_pid, _state}] <- BankingValidation.lookup_user(user) do
+      GenServer.call(user_pid, {:deposit, amount, currency})
+      |> BankingValidation.get_balance_from_reply(currency)
     else
-      [{user_pid, _state}] ->
-        GenServer.call(user_pid, {:deposit, amount, currency})
-        |> BankingValidation.get_balance_from_reply(currency)
+      false -> {:error, :wrong_arguments}
+      [] -> {:error, :user_does_not_exist}
     end
   end
 
   @spec withdraw(user :: String.t, amount :: number, currency :: String.t) :: {:ok, new_balance :: number} | banking_error
   def withdraw(user, amount, currency) do
-    with [] <- BankingValidation.lookup_user(user) do
-      {:error, :user_does_not_exist}
+    with true <- BankingValidation.valid_arguments?(user, amount, currency),
+    [{user_pid, _state}] <- BankingValidation.lookup_user(user),
+    %{} = new_balance <- GenServer.call(user_pid, {:withdraw, amount, currency}) do
+
+      BankingValidation.get_balance_from_reply(new_balance, currency)
     else
-      [{user_pid, _state}] ->
-        GenServer.call(user_pid, {:withdraw, amount, currency})
-        |> BankingValidation.get_balance_from_reply(currency)
+      false -> {:error, :wrong_arguments}
+      [] -> {:error, :user_does_not_exist}
+      :not_enough_money -> {:error, :not_enough_money}
     end
   end
 
   @spec send(from_user :: String.t, to_user :: String.t, amount :: number, currency :: String.t) :: {:ok, from_user_balance :: number, to_user_balance :: number} | banking_error
   def send(from_user, to_user, amount, currency) do
-    from_user = BankingValidation.lookup_user(from_user)
-    to_user = BankingValidation.lookup_user(to_user)
+    with true <- BankingValidation.valid_arguments?(from_user, to_user, amount, currency) do
+      from_user = BankingValidation.lookup_user(from_user)
+      to_user = BankingValidation.lookup_user(to_user)
 
-    cond do
-      from_user == [] -> {:error, :sender_does_not_exist}
-      to_user == [] -> {:error, :receiver_does_not_exist}
-      true -> transfer_money(from_user, to_user, amount, currency)
+      cond do
+        from_user == [] -> {:error, :sender_does_not_exist}
+        to_user == [] -> {:error, :receiver_does_not_exist}
+        true -> User.transfer_money(from_user, to_user, amount, currency)
+      end
+    else
+      false -> {:error, :wrong_arguments}
+      new_balance -> BankingValidation.get_balance_from_reply(new_balance, currency)
     end
   end
-
-  def transfer_money([{from_pid, _}], [{to_pid, _}], amount, currency) do
-    {:ok, from_new_balance} =
-      GenServer.call(from_pid, {:withdraw, amount, currency})
-      |> BankingValidation.get_balance_from_reply(currency)
-
-    {:ok, to_new_balance} =
-      GenServer.call(to_pid, {:deposit, amount, currency})
-      |> BankingValidation.get_balance_from_reply(currency)
-
-    {:ok, from_new_balance, to_new_balance}
-  end
-
 end

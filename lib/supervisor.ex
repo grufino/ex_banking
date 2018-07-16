@@ -7,7 +7,8 @@ defmodule ExBanking.Supervisor do
 
     def init(_) do
       children = [
-          {Registry, keys: :unique, name: Registry.ExBanking}
+          {Registry, keys: :unique, name: Registry.ExBanking},
+          {DynamicSupervisor, name: ExBanking.UsersSupervisor, strategy: :one_for_one}
       ]
 
       Supervisor.init(children, strategy: :one_for_one)
