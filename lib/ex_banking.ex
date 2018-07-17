@@ -1,7 +1,7 @@
 defmodule ExBanking do
   use Application
 
-  alias ExBanking.{User, UsersSupervisor, BankingValidation}
+  alias ExBanking.{UsersSupervisor, BankingValidation, UserOperations}
 
   @type banking_error :: {:error,
     :wrong_arguments                |
@@ -36,6 +36,7 @@ defmodule ExBanking do
     with true <- BankingValidation.valid_arguments?(user, currency),
     [{user_pid, _state}] <- BankingValidation.lookup_user(user),
     %{} = new_balance <- GenServer.call(user_pid, {:get_balance}) do
+
       BankingValidation.get_balance_from_reply(new_balance, currency)
     else
       false -> {:error, :wrong_arguments}
@@ -47,12 +48,14 @@ defmodule ExBanking do
   @spec deposit(user :: String.t, amount :: number, currency :: String.t) :: {:ok, new_balance :: number} | banking_error
   def deposit(user, amount, currency) do
     with true <- BankingValidation.valid_arguments?(user, amount, currency),
-    [{user_pid, _state}] <- BankingValidation.lookup_user(user) do
-      GenServer.call(user_pid, {:deposit, amount, currency})
-      |> BankingValidation.get_balance_from_reply(currency)
+    [{user_pid, _state}] <- BankingValidation.lookup_user(user),
+    %{} = new_balance <- GenServer.call(user_pid, {:deposit, amount, currency}) do
+
+      BankingValidation.get_balance_from_reply(new_balance, currency)
     else
       false -> {:error, :wrong_arguments}
       [] -> {:error, :user_does_not_exist}
+      :too_many_requests_to_user -> {:error, :too_many_requests_to_user}
     end
   end
 
@@ -67,6 +70,7 @@ defmodule ExBanking do
       false -> {:error, :wrong_arguments}
       [] -> {:error, :user_does_not_exist}
       :not_enough_money -> {:error, :not_enough_money}
+      :too_many_requests_to_user -> {:error, :too_many_requests_to_user}
     end
   end
 
@@ -79,7 +83,7 @@ defmodule ExBanking do
       cond do
         from_user == [] -> {:error, :sender_does_not_exist}
         to_user == [] -> {:error, :receiver_does_not_exist}
-        true -> User.transfer_money(from_user, to_user, amount, currency)
+        true -> UserOperations.transfer_money(from_user, to_user, amount, currency)
       end
     else
       false -> {:error, :wrong_arguments}

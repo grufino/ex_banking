@@ -1,0 +1,69 @@
+defmodule PerformanceTest do
+  use ExUnit.Case, async: false
+
+  import ExBanking
+
+  test "too many deposits" do
+    create_user("user")
+
+    result_list =
+    Enum.map(1..15, fn _ -> Task.async(fn -> deposit("user", 100, "dollar") end) end)
+    |> Enum.map(&Task.await/1)
+
+    assert Enum.member?(result_list, {:error, :too_many_requests_to_user}) == true
+  end
+
+  test "too many withdraws" do
+    create_user("user2")
+    deposit("user2", 10000, "dollar")
+
+    result_list =
+    Enum.map(1..15, fn _ -> Task.async(fn -> withdraw("user2", 100, "dollar") end) end)
+    |> Enum.map(&Task.await/1)
+
+    assert Enum.member?(result_list, {:error, :too_many_requests_to_user}) == true
+  end
+
+  test "too many request to sender" do
+    create_user("user3")
+    deposit("user3", 10000, "dollar")
+
+    create_user("user4")
+    create_user("user5")
+
+    result_list =
+    Enum.map(1..15, fn i -> Task.async(fn ->
+      case i > 7 do
+        true -> send("user3", "user4", 100, "dollar")
+        false -> send("user3", "user5", 100, "dollar")
+      end
+    end) end)
+    |> Enum.map(&Task.await/1)
+
+    assert Enum.member?(result_list, {:error, :too_many_requests_to_sender}) == true
+  end
+
+  test "too many request to receiver" do
+    create_user("user7")
+    create_user("user8")
+    create_user("user9")
+    deposit("user7", 10000, "dollar")
+    deposit("user8", 10000, "dollar")
+    deposit("user9", 10000, "dollar")
+
+    create_user("user6")
+
+    result_list =
+    Enum.map(1..19, fn i -> Task.async(fn ->
+      cond do
+        i < 7 -> send("user7", "user6", 100, "dollar")
+        i < 14 -> send("user8", "user6", 100, "dollar")
+        i < 20 -> send("user9", "user6", 100, "dollar")
+      end
+    end) end)
+    |> Enum.map(&Task.await/1)
+
+    assert Enum.member?(result_list, {:error, :too_many_requests_to_receiver}) == true
+  end
+
+end

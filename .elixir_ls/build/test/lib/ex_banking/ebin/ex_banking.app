@@ -4,6 +4,7 @@
               {modules,['Elixir.ExBanking',
                         'Elixir.ExBanking.BankingValidation',
                         'Elixir.ExBanking.Supervisor','Elixir.ExBanking.User',
+                        'Elixir.ExBanking.UserOperations',
                         'Elixir.ExBanking.UsersSupervisor']},
               {registered,[]},
               {vsn,"0.1.0"},
