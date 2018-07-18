@@ -3,8 +3,7 @@ defmodule ExBanking.UserOperations do
   alias ExBanking.BankingValidation
 
   def transfer_money([{from_pid, _}], [{to_pid, _}], amount, currency) do
-    with {:ok, from_new_balance} <- withdraw_for_transfer(from_pid, amount, currency),
-    {:ok, to_new_balance} <- deposit_transfer(to_pid, amount, currency) do
+    with {:ok, from_new_balance, to_new_balance} <- withdraw_for_transfer(from_pid, to_pid, amount, currency) do
 
       {:ok, from_new_balance, to_new_balance}
     else
@@ -14,13 +13,13 @@ defmodule ExBanking.UserOperations do
     end
   end
 
-  def withdraw_for_transfer(from_pid, amount, currency) do
-    with %{} = from_reply <- GenServer.call(from_pid, {:withdraw, amount, currency}),
-        {:ok, from_new_balance} <- BankingValidation.get_balance_from_reply(from_reply, currency) do
-       {:ok, from_new_balance}
+  def withdraw_for_transfer(from_pid, to_pid, amount, currency) do
+    with {:ok, from_reply, to_reply} <- GenServer.call(from_pid, {:send, to_pid, amount, currency}) do
+      {:ok, from_reply, to_reply}
     else
       :not_enough_money -> {:error, :not_enough_money}
       :too_many_requests_to_user -> {:error, :too_many_requests_to_sender}
+      {:error, :too_many_requests_to_receiver} -> {:error, :too_many_requests_to_receiver}
     end
   end
 

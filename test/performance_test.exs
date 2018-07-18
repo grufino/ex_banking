@@ -66,4 +66,35 @@ defmodule PerformanceTest do
     assert Enum.member?(result_list, {:error, :too_many_requests_to_receiver}) == true
   end
 
+  test "too many request to receiver, sender balance not affected when receiver doesn't receive" do
+    create_user("user10")
+    create_user("user11")
+    deposit("user10", 800, "dollar")
+    deposit("user11", 800, "dollar")
+
+    create_user("user12")
+
+    result_list =
+    Enum.map(1..15, fn i -> Task.async(fn ->
+      cond do
+        i < 8 -> send("user11", "user12", 100, "dollar")
+        i < 16 -> send("user10", "user12", 100, "dollar")
+      end
+    end) end)
+    |> Enum.map(&Task.await/1)
+
+
+    assert Enum.member?(result_list, {:error, :too_many_requests_to_receiver}) == true
+
+    :timer.sleep(500)
+
+    #The sum of the three balances must be equal to the total deposited in
+    #user10 and user11 balances, regardless of having receiver errors
+    {:ok, balance_10} = get_balance("user10", "dollar")
+    {:ok, balance_11} = get_balance("user11", "dollar")
+    {:ok, balance_12} = get_balance("user12", "dollar")
+
+    assert balance_10 + balance_11 + balance_12 == 1600
+  end
+
 end
